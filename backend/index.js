@@ -36,8 +36,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// === Directory setup ===
-const __dirname = path.resolve();
+
 
 // === Sync database ===
 sequelize.sync({ alter: true }) 
