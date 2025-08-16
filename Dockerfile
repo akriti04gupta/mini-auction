@@ -9,20 +9,20 @@ COPY frontend/ ./
 RUN npm run build
 
 
-# --- Stage 2: Setup the Production Server (IMPROVED) ---
+# --- Stage 2: Setup the Production Server (FINAL, MOST RELIABLE) ---
 FROM node:18-alpine
 
 # Set the working directory for the entire application.
 WORKDIR /app
 
-# Copy the backend's package.json and package-lock.json first for caching.
-COPY backend/package*.json ./
-
-# Install backend dependencies in the root of our app directory.
-RUN npm install --production
-
-# Copy the rest of the backend source code.
+# Copy the ENTIRE backend source code first.
+# This is a more robust approach that ensures all files, including package.json,
+# are in place before we try to install anything.
 COPY backend/ .
+
+# Now that all files are present, install the production dependencies.
+# We use the modern --omit=dev flag as recommended by npm.
+RUN npm install --omit=dev
 
 # Copy the built static files from the 'builder' stage (Stage 1)
 # into a 'public' directory.
