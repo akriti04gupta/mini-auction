@@ -2,34 +2,37 @@
 
 # --- Stage 1: Build the React Frontend ---
 FROM node:18-alpine AS builder
+
+# Set a general working directory
+WORKDIR /app
+
+# Copy the frontend's package files first
+COPY frontend/package*.json ./frontend/
+# Change to the frontend directory to run npm install
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
 RUN npm install
-COPY frontend/ ./
+
+# Copy the rest of the frontend source code
+COPY frontend/ .
+# Run the build
 RUN npm run build
 
 
-# --- Stage 2: Setup the Production Server (FINAL, MOST EXPLICIT) ---
+# --- Stage 2: Setup the Production Server ---
 FROM node:18-alpine
 
-# Set the working directory for the application.
 WORKDIR /app
 
-# 1. Copy ONLY the package.json and package-lock.json from the backend.
-# This is a very explicit step to ensure these files exist before anything else.
-COPY backend/package.json ./
-COPY backend/package-lock.json ./
-
-# 2. Now, run npm install.
-# It will only install dependencies based on the package files.
+# Copy the backend's package files
+COPY backend/package*.json ./
+# Run npm install for the backend
 RUN npm install --omit=dev
 
-# 3. Now, copy the rest of your backend source code.
+# Copy the rest of the backend source code
 COPY backend/ .
 
-# 4. Copy the built frontend from the 'builder' stage.
+# Copy the built frontend from the builder stage
 COPY --from=builder /app/frontend/build ./public
 
-# Expose the port and set the start command.
 EXPOSE 5000
 CMD ["node", "index.js"]
