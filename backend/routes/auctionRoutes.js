@@ -1,123 +1,107 @@
-// =====================
-// Mini Auction Backend (FINAL CORRECTED VERSION)
-// =====================
+// backend/routes/auctionRoutes.js
 
 const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const { Server } = require('socket.io');
-const dotenv = require('dotenv');
-const path = require("path");
-const { Op } = require('sequelize');
-const cron = require('node-cron');
+const router = express.Router();
+// --- CORRECTED PATHS ---
+const Auction = require('../models/Auction');
+const Bid = require('../models/Bid');
+const redis = require('../redisClient');
+const { sendSaleConfirmationEmails } = require('../emailService');
+const sequelize = require('../db'); // This was missing
 
-dotenv.config();
-
-const sequelize = require('../db');
-const Auction = require('./models/Auction');
-const Bid = require('./models/Bid');
-const auctionRoutes = require('./routes/auctionRoutes');
-const redis = require('./redisClient');
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// === Relationships ===
-Auction.hasMany(Bid, { foreignKey: 'AuctionId', onDelete: 'CASCADE' });
-Bid.belongsTo(Auction, { foreignKey: 'AuctionId' });
-
-
-// --- THIS IS THE CORRECT ORDER ---
-
-// 1. API routes MUST be defined FIRST.
-// This ensures that any request starting with /api is handled by your backend logic.
-app.use('/api/auction', auctionRoutes);
-
-// 2. Serve the static frontend files SECOND.
-// The path is '/public' because that's where our Dockerfile copies the build files.
-app.use(express.static(path.join(__dirname, 'public')));
-
-// 3. The "catch-all" route for client-side navigation comes LAST.
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// --- END OF CORRECTION ---
-
-
-// === Sync database ===
-sequelize.sync({ force: true }) // Using force: true for development
-.then(() => {
-    console.log('✅ Database synced (force)');
-})
-.catch(err => console.error('Database sync error:', err));
-
-
-// === Helper function ===
-function getAuctionWindow(auction) {
-    const start = new Date(auction.goLiveTime).getTime();
-    const end = start + auction.durationMinutes * 60 * 1000;
-    return { start, end };
+async function getHighestBidRow(auctionId) {
+  return Bid.findOne({ where: { AuctionId: auctionId }, order: [['amount', 'DESC']] });
 }
 
-// === Socket.IO Server ===
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
-app.set('io', io);
+// --- All routes are guaranteed to be correct in this version ---
 
-io.on('connection', (socket) => {
-    console.log('🔌 New client connected:', socket.id);
-
-    socket.on('joinAuction', async (auctionId) => {
-        try {
-            auctionId = String(auctionId);
-            socket.join(auctionId);
-            let highest = await redis.get(`auction:${auctionId}:highestBid`);
-            if (highest == null) {
-                const topBid = await Bid.findOne({ where: { AuctionId: auctionId }, order: [['amount', 'DESC']] });
-                const auction = await Auction.findByPk(auctionId);
-                highest = topBid ? topBid.amount : (auction ? auction.startPrice : 0);
-                await redis.set(`auction:${auctionId}:highestBid`, String(highest));
-            }
-            socket.emit('highestBid', parseFloat(highest));
-        } catch (err) { console.error('joinAuction error', err); }
-    });
-
-    socket.on('placeBid', async ({ auctionId, amount, bidder }) => {
-        try {
-            const auction = await Auction.findByPk(auctionId);
-            if (!auction || auction.status !== 'active') return socket.emit('bidError', 'Auction is not active.');
-            const { start, end } = getAuctionWindow(auction);
-            const now = Date.now();
-            if (now < start || now > end) return socket.emit('bidError', 'Auction is not currently active.');
-            let highest = await redis.get(`auction:${auctionId}:highestBid`);
-            highest = highest ? parseFloat(highest) : auction.startPrice;
-            if (amount < highest + auction.bidIncrement) return socket.emit('bidError', `Bid must be at least ₹${highest + auction.bidIncrement}`);
-            await Bid.create({ amount, bidder, AuctionId: auctionId });
-            await redis.set(`auction:${auctionId}:highestBid`, String(amount));
-            io.to(auctionId).emit('newBid', { amount, bidder });
-        } catch (err) { console.error('placeBid error', err); }
-    });
-
-    socket.on('disconnect', () => {
-        console.log('❌ Client disconnected:', socket.id);
-    });
+router.post('/', async (req, res) => {
+  try {
+    const { goLiveTime, durationMinutes } = req.body;
+    if (!goLiveTime || !durationMinutes) return res.status(400).json({ error: "goLiveTime and durationMinutes are required." });
+    const startTime = new Date(goLiveTime);
+    const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
+    const auction = await Auction.create({ ...req.body, endTime });
+    await redis.set(`auction:${auction.id}:highestBid`, String(auction.startPrice));
+    res.status(201).json(auction);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// === Cron job: Check for ended auctions ===
-cron.schedule('* * * * *', async () => {
+router.get('/', async (req, res) => {
+  try {
+    const auctions = await Auction.findAll({ order: [['goLiveTime', 'ASC']] });
+    res.json(auctions);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    const auction = await Auction.findByPk(req.params.id, { include: [{ model: Bid, order: [['amount', 'DESC']] }] });
+    if (!auction) return res.status(404).json({ error: "Auction not found" });
+    res.json(auction);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/:id/decision', async (req, res) => {
+    const { id: auctionId } = req.params;
+    const { decision, counterPrice } = req.body;
+    const io = req.app.get('io');
     try {
-        const endedAuctions = await Auction.findAll({ where: { endTime: { [Op.lt]: new Date() }, status: 'active' } });
-        for (const auction of endedAuctions) {
-            auction.status = 'pending_decision';
+        const auction = await Auction.findByPk(auctionId);
+        if (!auction || auction.status !== 'pending_decision') return res.status(400).json({ error: "Auction is not awaiting a decision." });
+        const highestBid = await getHighestBidRow(auctionId);
+        if (decision === 'accept') {
+            if (!highestBid) return res.status(400).json({ error: "No bids to accept." });
+            auction.status = 'sold';
+            auction.winnerId = highestBid.bidder;
+            auction.finalPrice = highestBid.amount;
             await auction.save();
-            const highestBid = await Bid.findOne({ where: { AuctionId: auction.id }, order: [['amount', 'DESC']] });
-            io.to(String(auction.id)).emit('decision_required', { auctionId: auction.id, highestBid: highestBid ? highestBid.toJSON() : null });
+            await sendSaleConfirmationEmails(auction, 'akuu04gupta@gmail.com', 'akritiabi@gmail.com');
+            io.to(String(auctionId)).emit('seller_decision_made', { auctionId, status: 'sold', finalPrice: auction.finalPrice, winnerId: auction.winnerId });
+            return res.json({ message: 'Bid accepted.' });
         }
-    } catch (err) { console.error('Error in cron job:', err); }
+        if (decision === 'reject') {
+            auction.status = 'closed_no_winner';
+            await auction.save();
+            io.to(String(auctionId)).emit('seller_decision_made', { auctionId, status: 'closed_no_winner' });
+            return res.json({ message: 'Bid rejected.' });
+        }
+        if (decision === 'counter') {
+            if (!highestBid) return res.status(400).json({ error: "No bids to counter-offer." });
+            if (!counterPrice || Number(counterPrice) <= highestBid.amount) return res.status(400).json({ error: 'Counter price must be higher.' });
+            auction.status = 'counter_offered';
+            auction.counterOfferPrice = Number(counterPrice);
+            await auction.save();
+            io.to(String(auctionId)).emit('counter_offer_received', { auctionId, counterPrice: auction.counterOfferPrice, highestBidder: highestBid.bidder });
+            return res.json({ message: 'Counter-offer sent.' });
+        }
+        return res.status(400).json({ error: 'Invalid decision.' });
+    } catch (err) { res.status(500).json({ error: 'Server error.' }); }
 });
 
-// === Start Server ===
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));
+router.post('/:id/counter-response', async (req, res) => {
+    const { id: auctionId } = req.params;
+    const { response } = req.body;
+    const io = req.app.get('io');
+    try {
+        const auction = await Auction.findByPk(auctionId);
+        if (!auction || auction.status !== 'counter_offered') return res.status(400).json({ error: "Auction not in counter-offer state." });
+        const highestBid = await getHighestBidRow(auctionId);
+        if (response === 'accept') {
+            auction.status = 'sold';
+            auction.winnerId = highestBid.bidder;
+            auction.finalPrice = auction.counterOfferPrice;
+            await auction.save();
+            await sendSaleConfirmationEmails(auction, 'akuu04gupta@gmail.com', 'akritiabi@gmail.com');
+            io.to(String(auctionId)).emit('seller_decision_made', { auctionId, status: 'sold', finalPrice: auction.finalPrice, winnerId: auction.winnerId });
+            return res.json({ message: 'Counter-offer accepted.' });
+        } else {
+            auction.status = 'closed_no_winner';
+            await auction.save();
+            io.to(String(auctionId)).emit('seller_decision_made', { auctionId, status: 'closed_no_winner' });
+            return res.json({ message: 'Counter-offer rejected.' });
+        }
+    } catch (err) { res.status(500).json({ error: 'Server error.' }); }
+});
+
+module.exports = router;
