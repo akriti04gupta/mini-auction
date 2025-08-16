@@ -3,18 +3,15 @@
 # --- Stage 1: Build the React Frontend ---
 FROM node:18-alpine AS builder
 
-# Set a general working directory
+# Set the main working directory
 WORKDIR /app
 
-# Copy the frontend's package files first
-COPY frontend/package*.json ./frontend/
-# Change to the frontend directory to run npm install
+# Copy the entire project context (both frontend and backend folders)
+COPY . .
+
+# Set the working directory to the frontend to build it
 WORKDIR /app/frontend
 RUN npm install
-
-# Copy the rest of the frontend source code
-COPY frontend/ .
-# Run the build
 RUN npm run build
 
 
@@ -23,7 +20,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy the backend's package files
+# Copy the backend's package files from the project context
 COPY backend/package*.json ./
 # Run npm install for the backend
 RUN npm install --omit=dev
