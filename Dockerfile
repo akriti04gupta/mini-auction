@@ -1,35 +1,36 @@
-# Dockerfile
-
-# --- Stage 1: Build the React Frontend ---
-FROM node:18-alpine AS builder
-
-# Set the main working directory
-WORKDIR /app
-
-# Copy the entire project context (both frontend and backend folders)
-COPY . .
-
-# Set the working directory to the frontend to build it
+# ---------- Frontend Build ----------
+FROM node:18 AS frontend-builder
 WORKDIR /app/frontend
+
+# copy frontend package files
+COPY frontend/package*.json ./
 RUN npm install
+
+# copy frontend source
+COPY frontend/ ./
+
+# build production files
 RUN npm run build
 
-
-# --- Stage 2: Setup the Production Server ---
-FROM node:18-alpine
-
+# ---------- Backend Build ----------
+FROM node:18 AS backend
 WORKDIR /app
 
-# Copy the backend's package files from the project context
-COPY backend/package*.json ./
-# Run npm install for the backend
-RUN npm install --omit=dev
+# copy backend package files
+COPY backend/package*.json ./backend/
+WORKDIR /app/backend
+RUN npm install
 
-# Copy the rest of the backend source code
-COPY backend/ .
+# copy backend source
+COPY backend/ ./ 
 
-# Copy the built frontend from the builder stage
-COPY --from=builder /app/frontend/build ./public
+# copy built frontend into backend's public dir
+WORKDIR /app/backend
+RUN mkdir -p public
+COPY --from=frontend-builder /app/frontend/dist ./public
 
+# expose backend port
 EXPOSE 5000
+
+# start server
 CMD ["node", "index.js"]
