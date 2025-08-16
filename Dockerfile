@@ -1,29 +1,27 @@
-# ==== Base Image ====
-FROM node:20-alpine AS build
+# ==== Frontend Build Stage ====
+FROM node:20-alpine AS frontend-build
 
-# ==== Frontend Build ====
 WORKDIR /app/frontend
 
-# Copy frontend package files and install dependencies
 COPY frontend/package*.json ./
 RUN npm install
 
-# Copy the rest of frontend code and build
 COPY frontend/ ./
 RUN npm run build
 
-# ==== Backend Setup ====
+# ==== Backend Stage ====
+FROM node:20-alpine AS backend
+
 WORKDIR /app/backend
 
 # Copy backend code
 COPY backend/ ./
 
-# Copy the built frontend into backend/public
-COPY --from=build /app/frontend/build ../backend/public
+# Copy frontend build into backend/public
+COPY --from=frontend-build /app/frontend/build ./public
 
-# ==== Install backend dependencies if any (skip if none) ====
-# RUN npm install --omit=dev
-
-# ==== Expose port and start backend ====
+# Expose backend port
 EXPOSE 5000
+
+# Start backend
 CMD ["node", "index.js"]
