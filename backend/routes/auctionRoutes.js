@@ -13,7 +13,7 @@ const cron = require('node-cron');
 
 dotenv.config();
 
-const sequelize = require('./db');
+const sequelize = require('../db');
 const Auction = require('./models/Auction');
 const Bid = require('./models/Bid');
 const auctionRoutes = require('./routes/auctionRoutes');
