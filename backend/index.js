@@ -39,7 +39,7 @@ app.use((req, res, next) => {
 
 
 // === Sync database ===
-sequelize.sync() 
+sequelize.sync({ force: true }) 
 .then(() => {
     console.log('Database synced (alter)');
 })
