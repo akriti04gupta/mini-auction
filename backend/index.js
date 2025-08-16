@@ -3,6 +3,7 @@ const http = require('http');
 const cors = require('cors'); 
 const { Server } = require('socket.io');
 const dotenv = require('dotenv');
+const path = require("path");
 const { Op } = require('sequelize'); 
 const cron = require('node-cron');
 dotenv.config();
@@ -28,10 +29,17 @@ app.use((req, res, next) => {
     console.log(`${req.method} ${req.url}`);
     next();
 });
-
+const __dirname = path.resolve();
 sequelize.sync({ alter: true }) 
 .then(() => {
     console.log('Database synced (alter)');
+});
+
+// Serve frontend build (React)
+app.use(express.static(path.join(__dirname, "frontend", "build")));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "frontend", "build", "index.html"));
 });
 
 
