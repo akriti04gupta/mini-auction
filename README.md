@@ -62,8 +62,8 @@ mini-auction/
 │
 │── Dockerfile        # Multi-stage Docker setup
 │── README.md         # Documentation
-```
 
+```
 ## 🔄 System Architecture
 
 ```mermaid
