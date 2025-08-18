@@ -1,15 +1,15 @@
 # .dockerignore
 
-# node_modules folders ko ignore karein
+
 **/node_modules
 
-# local environment files ko ignore karein
+
 .env*
 
-# npm debug logs ko ignore karein
+
 npm-debug.log*
 
-# Docker files ko ignore karein
+
 Dockerfile
 .dockerignore
 
