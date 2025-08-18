@@ -13,6 +13,6 @@ npm-debug.log*
 Dockerfile
 .dockerignore
 
-# Git files ko ignore karein
+# Git 
 .git
 .gitignore
