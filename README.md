@@ -46,11 +46,60 @@ Make sure you have installed:
 - [PostgreSQL](https://www.postgresql.org/)
 - [Redis](https://redis.io/)
 
----
+## 📂 Project Structure
 
-### 📌 Steps to Run
+```bash
+mini-auction/
+│── backend/          # Node.js/Express backend
+│   ├── models/       # Sequelize models
+│   ├── routes/       # API routes
+│   ├── sockets/      # Socket.IO logic
+│   └── utils/        # Email, Redis, PDF helpers
+│
+│── frontend/         # React frontend
+│   ├── src/          # React components & pages
+│   └── public/       # Static assets
+│
+│── Dockerfile        # Multi-stage Docker setup
+│── README.md         # Documentation
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-username/mini-auction.git
-   cd mini-auction
+## 🔄 System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Frontend [Frontend (React.js)]
+        UI[User Interface ]
+        SocketClient[Socket.IO Client]
+        APIClient[Axios API Client]
+    end
+
+    subgraph Backend [Backend (Node.js + Express)]
+        Routes[REST API Routes ]
+        SocketServer[Socket.IO Server]
+        Utils[Utils: Email, PDF, Redis]
+    end
+
+    subgraph DB [Database Layer]
+        Postgres[(PostgreSQL via Sequelize )]
+        Redis[(Redis Cache)]
+    end
+
+    subgraph External [External Services]
+        SendGrid[SendGrid - Email Service ]
+    end
+
+    UI --> APIClient
+    UI --> SocketClient
+
+    APIClient --> Routes
+    SocketClient --> SocketServer
+
+    Routes --> Postgres
+    Routes --> Redis
+    SocketServer --> Redis
+    SocketServer --> Postgres
+
+    Utils --> SendGrid
+    Utils --> Postgres
+```
