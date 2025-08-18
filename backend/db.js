@@ -7,8 +7,10 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialectOptions: {
     ssl: {
       require: true,
-      rejectUnauthorized: false 
-    }
+      rejectUnauthorized: false
+    },
+    // This line forces the connection over IPv4 to fix the network error
+    family: 4
   },
   logging: false
 });
