@@ -1,6 +1,3 @@
-// =====================
-// Mini Auction Backend (FINAL CORRECTED VERSION)
-// =====================
 
 const express = require('express');
 const http = require('http');
@@ -23,51 +20,40 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// === Relationships ===
+
 Auction.hasMany(Bid, { foreignKey: 'AuctionId', onDelete: 'CASCADE' });
 Bid.belongsTo(Auction, { foreignKey: 'AuctionId' });
 
 
-// --- THIS IS THE CORRECT ORDER ---
-
-// 1. API routes MUST be defined FIRST.
-// This ensures that any request starting with /api is handled by your backend logic.
 app.use('/api/auction', auctionRoutes);
 
-// 2. Serve the static frontend files SECOND.
-// The path is '/public' because that's where our Dockerfile copies the build files.
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 3. The "catch-all" route for client-side navigation comes LAST.
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// --- END OF CORRECTION ---
 
-
-// === Sync database ===
-sequelize.sync({ force: true }) // Using force: true for development
+sequelize.sync({ force: true }) 
 .then(() => {
-    console.log('✅ Database synced (force)');
+    console.log(' Database synced (force)');
 })
 .catch(err => console.error('Database sync error:', err));
 
 
-// === Helper function ===
 function getAuctionWindow(auction) {
     const start = new Date(auction.goLiveTime).getTime();
     const end = start + auction.durationMinutes * 60 * 1000;
     return { start, end };
 }
 
-// === Socket.IO Server ===
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 
 io.on('connection', (socket) => {
-    console.log('🔌 New client connected:', socket.id);
+    console.log(' New client connected:', socket.id);
 
     socket.on('joinAuction', async (auctionId) => {
         try {
@@ -101,11 +87,11 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('❌ Client disconnected:', socket.id);
+        console.log(' Client disconnected:', socket.id);
     });
 });
 
-// === Cron job: Check for ended auctions ===
+// Cron job
 cron.schedule('* * * * *', async () => {
     try {
         const endedAuctions = await Auction.findAll({ where: { endTime: { [Op.lt]: new Date() }, status: 'active' } });
@@ -118,6 +104,5 @@ cron.schedule('* * * * *', async () => {
     } catch (err) { console.error('Error in cron job:', err); }
 });
 
-// === Start Server ===
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));
+server.listen(PORT, () => console.log(` Backend running on port ${PORT}`));
