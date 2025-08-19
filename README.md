@@ -60,7 +60,7 @@ mini-auction/
 │   ├── src/          # React components & pages
 │   └── public/       # Static assets
 │
-│── Dockerfile        # Multi-stage Docker setup
+│── Dockerfile        # Docker setup
 │── README.md         # Documentation
 
 ```
